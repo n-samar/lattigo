@@ -33,7 +33,7 @@ test_gotest:
 	go test -v -timeout=0 ./dckks
 
 .PHONY: test
-test: test_fmt test_gotest test_examples
+test: test_gotest test_examples
 
 .PHONY: ci_test
 ci_test: test_fmt test_lint test_gotest test_examples
