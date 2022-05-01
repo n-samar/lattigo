@@ -159,7 +159,7 @@ func (ecd *encoder) ringQ2T(level int, scale uint64, pQ, pT *ring.Poly) {
 		ringT.SubScalar(pT, (ringQ.Modulus[0]>>1)%ringT.Modulus[0], pT)
 	}
 
-	ecd.params.RingT().MulScalar(ecd.buffT, scale, ecd.buffT)
+	ringT.MulScalar(ecd.buffT, ring.ModExp(scale, ringT.Modulus[0]-2, ringT.Modulus[0]), ecd.buffT)
 }
 
 // DecodeUint decodes a any plaintext type and write the coefficients in coeffs. It panics if p is not PlaintextRingT, Plaintext or PlaintextMul.

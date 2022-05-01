@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/bits"
 
 	"github.com/tuneinsight/lattigo/v3/ring"
@@ -106,13 +105,13 @@ var (
 	}
 )
 
-// DefaultParams is a set of default BFV parameters ensuring 128 bit security in the classic setting.
+// DefaultParams is a set of default BGV parameters ensuring 128 bit security in the classic setting.
 var DefaultParams = []ParametersLiteral{PN12QP109, PN13QP218, PN14QP438, PN15QP880}
 
-// DefaultPostQuantumParams is a set of default BFV parameters ensuring 128 bit security in the post-quantum setting.
+// DefaultPostQuantumParams is a set of default BGV parameters ensuring 128 bit security in the post-quantum setting.
 var DefaultPostQuantumParams = []ParametersLiteral{PN12QP101pq, PN13QP202pq, PN14QP411pq, PN15QP827pq}
 
-// ParametersLiteral is a literal representation of BFV parameters.  It has public
+// ParametersLiteral is a literal representation of BGV parameters.  It has public
 // fields and is used to express unchecked user-defined parameters literally into
 // Go programs. The NewParametersFromLiteral function is used to generate the actual
 // checked parameters from the literal representation.
@@ -130,15 +129,14 @@ type ParametersLiteral struct {
 	T uint64 // Plaintext modulus
 }
 
-// Parameters represents a parameter set for the BFV cryptosystem. Its fields are private and
+// Parameters represents a parameter set for the BGV cryptosystem. Its fields are private and
 // immutable. See ParametersLiteral for user-specified parameters.
 type Parameters struct {
 	rlwe.Parameters
-	ringQMul *ring.Ring
-	ringT    *ring.Ring
+	ringT *ring.Ring
 }
 
-// NewParameters instantiate a set of BFV parameters from the generic RLWE parameters and the BFV-specific ones.
+// NewParameters instantiate a set of BGV parameters from the generic RLWE parameters and the BGV-specific ones.
 // It returns the empty parameters Parameters{} and a non-nil error if the specified parameters are invalid.
 func NewParameters(rlweParams rlwe.Parameters, t uint64) (p Parameters, err error) {
 
@@ -154,21 +152,15 @@ func NewParameters(rlweParams rlwe.Parameters, t uint64) (p Parameters, err erro
 		return Parameters{}, fmt.Errorf("t=%d is larger than Q[0]=%d", t, rlweParams.Q()[0])
 	}
 
-	var ringQMul, ringT *ring.Ring
-
-	nbQiMul := int(math.Ceil(float64(rlweParams.RingQ().ModulusAtLevel[rlweParams.MaxLevel()].BitLen()+rlweParams.LogN()) / 61.0))
-	if ringQMul, err = ring.NewRing(rlweParams.N(), ring.GenerateNTTPrimesP(61, 2*rlweParams.N(), nbQiMul)); err != nil {
-		return Parameters{}, err
-	}
-
+	var ringT *ring.Ring
 	if ringT, err = ring.NewRing(rlweParams.N(), []uint64{t}); err != nil {
 		return Parameters{}, err
 	}
 
-	return Parameters{rlweParams, ringQMul, ringT}, nil
+	return Parameters{rlweParams, ringT}, nil
 }
 
-// NewParametersFromLiteral instantiate a set of BFV parameters from a ParametersLiteral specification.
+// NewParametersFromLiteral instantiate a set of BGV parameters from a ParametersLiteral specification.
 // It returns the empty parameters Parameters{} and a non-nil error if the specified parameters are invalid.
 //
 // See `rlwe.NewParametersFromLiteral` for default values of the optional fields.
@@ -178,11 +170,6 @@ func NewParametersFromLiteral(pl ParametersLiteral) (Parameters, error) {
 		return Parameters{}, err
 	}
 	return NewParameters(rlweParams, pl.T)
-}
-
-// RingQMul returns a pointer to the ring of the extended basis for multiplication.
-func (p Parameters) RingQMul() *ring.Ring {
-	return p.ringQMul
 }
 
 // T returns the plaintext coefficient modulus t.
@@ -239,11 +226,6 @@ func (p Parameters) MarshalBinary() ([]byte, error) {
 // UnmarshalBinary decodes a []byte into a parameter set struct.
 func (p *Parameters) UnmarshalBinary(data []byte) (err error) {
 	if err := p.Parameters.UnmarshalBinary(data); err != nil {
-		return err
-	}
-
-	nbQiMul := int(math.Ceil(float64(p.RingQ().ModulusAtLevel[p.MaxLevel()].BitLen()+p.LogN()) / 61.0))
-	if p.ringQMul, err = ring.NewRing(p.N(), ring.GenerateNTTPrimesP(61, 2*p.N(), nbQiMul)); err != nil {
 		return err
 	}
 

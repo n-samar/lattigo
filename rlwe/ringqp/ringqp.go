@@ -159,6 +159,17 @@ func (r *Ring) NegLvl(levelQ, levelP int, p1, p2 Poly) {
 	}
 }
 
+// MulScalarLvl multiplies p1 coefficient-wise with the given scalar and writes the result on p2.
+// The operation is performed at levelQ for the ringQ and levelP for the ringP.
+func (r *Ring) MulScalarLvl(levelQ, levelP int, p1 Poly, scalar uint64, p2 Poly) {
+	if r.RingQ != nil {
+		r.RingQ.MulScalarLvl(levelQ, p1.Q, scalar, p2.Q)
+	}
+	if r.RingP != nil {
+		r.RingP.MulScalarLvl(levelP, p1.P, scalar, p2.P)
+	}
+}
+
 // NTTLvl computes the NTT of p1 and returns the result on p2.
 // The operation is performed at levelQ for the ringQ and levelP for the ringP.
 func (r *Ring) NTTLvl(levelQ, levelP int, p1, p2 Poly) {

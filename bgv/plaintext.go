@@ -27,3 +27,7 @@ func NewPlaintextAtLevelFromPoly(level int, poly *ring.Poly) *Plaintext {
 	v0.Coeffs = poly.Coeffs[:level+1]
 	return &Plaintext{Plaintext: &rlwe.Plaintext{Value: v0}, Scale: 1}
 }
+
+func (p *Plaintext) ScalingFactor() uint64 {
+	return p.Scale
+}

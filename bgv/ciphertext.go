@@ -25,6 +25,10 @@ func NewCiphertext(params Parameters, degree, level int, scale uint64) (cipherte
 	return ciphertext
 }
 
+func (ct *Ciphertext) ScalingFactor() uint64 {
+	return ct.Scale
+}
+
 // NewCiphertextRandom generates a new uniformly distributed Ciphertext of degree, level and scale.
 func NewCiphertextRandom(prng utils.PRNG, params Parameters, degree, level int, scale uint64) (ciphertext *Ciphertext) {
 	ciphertext = &Ciphertext{rlwe.NewCiphertextRandom(prng, params.Parameters, degree, level), scale}
