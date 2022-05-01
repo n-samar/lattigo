@@ -53,7 +53,7 @@ func ModExp(x, e, p uint64) (result uint64) {
 
 // ModexpMontgomery performs the modular exponentiation x^e mod p,
 // where x is in Montgomery form, and returns x^e in Montgomery form.
-func ModexpMontgomery(x uint64, e int, q, qInv uint64, bredParams []uint64) (result uint64) {
+func ModexpMontgomery(x uint64, e, q, qInv uint64, bredParams []uint64) (result uint64) {
 
 	result = MForm(1, q, bredParams)
 

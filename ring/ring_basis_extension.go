@@ -117,7 +117,7 @@ func GenModUpParams(Q, P []uint64) ModupParams {
 		}
 
 		// (Q/Qi)^-1) * r (mod Qi) (in Montgomery form)
-		qoverqiinvqi[i] = ModexpMontgomery(qiStar, int(qi-2), qi, mredParamsQ[i], bredParamsQ[i])
+		qoverqiinvqi[i] = ModexpMontgomery(qiStar, qi-2, qi, mredParamsQ[i], bredParamsQ[i])
 
 		for j, pj := range P {
 			// (Q/qi * r) (mod Pj) (in Montgomery form)
