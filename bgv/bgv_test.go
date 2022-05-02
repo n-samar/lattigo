@@ -351,6 +351,7 @@ func testEvaluator(tc *testContext, t *testing.T) {
 
 				tc.evaluator.Neg(ciphertext, ciphertext)
 				tc.ringT.Neg(values, values)
+				tc.ringT.Reduce(values, values)
 
 				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
 
@@ -364,6 +365,7 @@ func testEvaluator(tc *testContext, t *testing.T) {
 
 				ciphertext = tc.evaluator.NegNew(ciphertext)
 				tc.ringT.Neg(values, values)
+				tc.ringT.Reduce(values, values)
 
 				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
 

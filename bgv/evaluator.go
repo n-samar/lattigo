@@ -31,9 +31,6 @@ type Evaluator interface {
 	MulScalarNew(ctIn *Ciphertext, scalar uint64) (ctOut *Ciphertext)
 	MulScalarAndAdd(ctIn *Ciphertext, scalar uint64, ctOut *Ciphertext)
 
-	DropLevelNew(ct0 *Ciphertext, levels int) (ctOut *Ciphertext)
-	DropLevel(ct0 *Ciphertext, levels int)
-
 	MulNew(ctIn *Ciphertext, op1 Operand) (ctOut *Ciphertext)
 	Mul(ctIn *Ciphertext, op1 Operand, ctOut *Ciphertext)
 	MulRelinNew(ctIn *Ciphertext, op1 Operand) (ctOut *Ciphertext)
@@ -43,6 +40,40 @@ type Evaluator interface {
 	MulRelinAndAdd(ctIn *Ciphertext, op1 Operand, ctOut *Ciphertext)
 
 	Rescale(ctIn, ctOut *Ciphertext) (err error)
+	DropLevelNew(ctIn *Ciphertext, levels int) (ctOut *Ciphertext)
+	DropLevel(ctIn *Ciphertext, levels int)
+
+	// TODO
+	//RotateNew(ctIn *Ciphertext, k int) (ctOut *Ciphertext)
+	//Rotate(ctIn *Ciphertext, k int, ctOut *Ciphertext)
+	//EvaluatePoly(ctIn *Ciphertext, pol *Polynomial) (ctOut *Ciphertext, err error)
+	//EvaluatePolyVector(ctIn *Ciphertext, pols []*Polynomial, encoder Encoder, slotIndex map[int][]int) (ctOut *Ciphertext, err error)
+	//LinearTransformNew(ctIn *Ciphertext, linearTransform interface{}) (ctOut []*Ciphertext)
+	//LinearTransform(ctIn *Ciphertext, linearTransform interface{}, ctOut []*Ciphertext)
+	//MultiplyByDiagMatrix(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []ringqp.Poly, ctOut *Ciphertext)
+	//MultiplyByDiagMatrixBSGS(ctIn *Ciphertext, matrix LinearTransform, c2DecompQP []ringqp.Poly, ctOut *Ciphertext)
+
+	//InnerSumLog(ctIn *Ciphertext, batch, n int, ctOut *Ciphertext)
+	//InnerSum(ctIn *Ciphertext, batch, n int, ctOut *Ciphertext)
+
+	// Replication (inverse of Inner sum)
+	//ReplicateLog(ctIn *Ciphertext, batch, n int, ctOut *Ciphertext)
+	//Replicate(ctIn *Ciphertext, batch, n int, ctOut *Ciphertext)
+
+	// Trace
+	//Trace(ctIn *Ciphertext, logSlots int, ctOut *Ciphertext)
+	//TraceNew(ctIn *Ciphertext, logSlots int) (ctOut *Ciphertext)
+
+	// Key-Switching
+	//SwitchKeysNew(ctIn *Ciphertext, switchingKey *rlwe.SwitchingKey) (ctOut *Ciphertext)
+	//SwitchKeys(ctIn *Ciphertext, switchingKey *rlwe.SwitchingKey, ctOut *Ciphertext)
+
+	// Degree Management
+	//RelinearizeNew(ctIn *Ciphertext) (ctOut *Ciphertext)
+	//Relinearize(ctIn *Ciphertext, ctOut *Ciphertext)
+
+	GetRLWEEvaluator() *rlwe.Evaluator
+	BuffQ() [3]*ring.Poly
 	ShallowCopy() Evaluator
 	WithKey(rlwe.EvaluationKey) Evaluator
 }
@@ -95,6 +126,16 @@ func newEvaluatorPrecomp(params Parameters) *evaluatorBase {
 
 type evaluatorBuffers struct {
 	buffQ [3]*ring.Poly
+}
+
+// BuffQ returns a pointer to the internal memory buffer buffQ.
+func (eval *evaluator) BuffQ() [3]*ring.Poly {
+	return eval.buffQ
+}
+
+// GetRLWEEvaluator returns the underlying *rlwe.Evaluator.
+func (eval *evaluator) GetRLWEEvaluator() *rlwe.Evaluator {
+	return eval.Evaluator
 }
 
 func newEvaluatorBuffer(eval *evaluatorBase) *evaluatorBuffers {
