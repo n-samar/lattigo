@@ -300,7 +300,6 @@ func (eval *evaluator) Sub(op0, op1 Operand, ctOut *Ciphertext) {
 			eval.params.RingQ().NegLvl(level, ctOut.Value[i], ctOut.Value[i])
 		}
 	}
-
 }
 
 // SubNoMod subtracts op1 from op0 and returns the result in ctOut, without modular reduction.

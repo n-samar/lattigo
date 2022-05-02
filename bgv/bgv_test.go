@@ -16,7 +16,7 @@ var (
 	// TESTTCPrimeQN2Q1P is a set of test parameters where T is coprime with Q.
 	TESTN14QP418 = ParametersLiteral{
 		ParametersLiteral: rlwe.ParametersLiteral{
-			LogN:  14,
+			LogN:  4,
 			Q:     []uint64{0xffffffffffe8001, 0xffffffffffd8001, 0xffffffffffc0001, 0xffffffffff28001},
 			P:     []uint64{0x1fffffffffe10001, 0x1fffffffffe00001},
 			Sigma: rlwe.DefaultSigma,
@@ -51,6 +51,7 @@ func TestBGV(t *testing.T) {
 		}
 
 		for _, testSet := range []func(tc *testContext, t *testing.T){
+			testParameters,
 			testEncoder,
 			testEncryptor,
 			testEvaluator,
@@ -109,17 +110,9 @@ func genTestParams(params Parameters) (tc *testContext, err error) {
 	return
 }
 
-func newTestVectorsLvl(level int, tc *testContext, encryptor Encryptor, t *testing.T) (coeffs *ring.Poly, plaintext *Plaintext, ciphertext *Ciphertext) {
-	//coeffs = tc.uSampler.ReadNew()
-	coeffs = &ring.Poly{
-		Coeffs: make([][]uint64, 1),
-	}
-	coeffs.Coeffs[0] = make([]uint64, tc.params.RingQ().N)
-	for i := range coeffs.Coeffs[0] {
-		coeffs.Coeffs[0][i] = uint64(1)
-	}
-
-	plaintext = NewPlaintext(tc.params, level, 1)
+func newTestVectorsLvl(level int, scale uint64, tc *testContext, encryptor Encryptor, t *testing.T) (coeffs *ring.Poly, plaintext *Plaintext, ciphertext *Ciphertext) {
+	coeffs = tc.uSampler.ReadNew()
+	plaintext = NewPlaintext(tc.params, level, scale)
 	tc.encoder.Encode(coeffs.Coeffs[0], plaintext)
 	if encryptor != nil {
 		ciphertext = encryptor.EncryptNew(plaintext)
@@ -144,11 +137,36 @@ func verifyTestVectors(tc *testContext, decryptor Decryptor, coeffs *ring.Poly, 
 	require.True(t, utils.EqualSliceUint64(coeffs.Coeffs[0], coeffsTest))
 }
 
+func testParameters(tc *testContext, t *testing.T) {
+
+	t.Run("Parameters/NewParameters", func(t *testing.T) {
+		params, err := NewParametersFromLiteral(ParametersLiteral{
+			ParametersLiteral: rlwe.ParametersLiteral{
+				LogN: 4,
+				LogQ: []int{60, 60},
+				LogP: []int{60},
+			},
+			T: 0x10001,
+		})
+		require.NoError(t, err)
+		require.Equal(t, ring.Standard, params.RingType())  // Default ring type should be standard
+		require.Equal(t, rlwe.DefaultSigma, params.Sigma()) // Default error std should be rlwe.DefaultSigma
+	})
+
+	t.Run("Parameters/CopyNew", func(t *testing.T) {
+		params1, params2 := tc.params.CopyNew(), tc.params.CopyNew()
+		require.True(t, params1.Equals(tc.params) && params2.Equals(tc.params))
+		params1.ringT, _ = ring.NewRing(params1.N(), []uint64{0x40002001})
+		require.False(t, params1.Equals(tc.params))
+		require.True(t, params2.Equals(tc.params))
+	})
+}
+
 func testEncoder(tc *testContext, t *testing.T) {
 
 	for _, lvl := range tc.testLevel {
 		t.Run(testString("Encoder/Encode&Decode/Uint", tc.params, lvl), func(t *testing.T) {
-			values, plaintext, _ := newTestVectorsLvl(lvl, tc, nil, t)
+			values, plaintext, _ := newTestVectorsLvl(lvl, 1, tc, nil, t)
 			verifyTestVectors(tc, nil, values, plaintext, t)
 		})
 	}
@@ -180,14 +198,14 @@ func testEncryptor(tc *testContext, t *testing.T) {
 
 	for _, lvl := range tc.testLevel {
 		t.Run(testString("Encoder/EncryptorPk", tc.params, lvl), func(t *testing.T) {
-			values, _, ciphertext := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+			values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorPk, t)
 			verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
 		})
 	}
 
 	for _, lvl := range tc.testLevel {
-		t.Run(testString("Encoder/EncryptorSk", tc.params, lvl), func(t *testing.T) {
-			values, _, ciphertext := newTestVectorsLvl(lvl, tc, tc.encryptorSk, t)
+		t.Run(testString("Encoder/encryptorSk", tc.params, lvl), func(t *testing.T) {
+			values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
 			verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
 		})
 	}
@@ -198,10 +216,60 @@ func testEvaluator(tc *testContext, t *testing.T) {
 	t.Run("Evaluator", func(t *testing.T) {
 
 		for _, lvl := range tc.testLevel {
-			t.Run(testString("Evaluator/Add/op0=ct/op2=ct/scale=matche", tc.params, lvl), func(t *testing.T) {
+			t.Run(testString("Evaluator/AddNew/op0=ct/op2=ct/scale=match", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				require.Equal(t, ciphertext0.Scale, ciphertext1.Scale)
+
+				ciphertext2 := tc.evaluator.AddNew(ciphertext0, ciphertext1)
+				tc.ringT.Add(values0, values1, values0)
+
+				verifyTestVectors(tc, tc.decryptor, values0, ciphertext2, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/Add/op0=ct/op2=ct/scale=match", tc.params, lvl), func(t *testing.T) {
+
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				require.Equal(t, ciphertext0.Scale, ciphertext1.Scale)
+
+				tc.evaluator.Add(ciphertext0, ciphertext1, ciphertext0)
+				tc.ringT.Add(values0, values1, values0)
+
+				verifyTestVectors(tc, tc.decryptor, values0, ciphertext0, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/Add/op0=ct/op2=pt/scale=match", tc.params, lvl), func(t *testing.T) {
+
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, plaintext, _ := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				require.Equal(t, ciphertext0.Scale, plaintext.Scale)
+
+				tc.evaluator.Add(ciphertext0, plaintext, ciphertext0)
+				tc.ringT.Add(values0, values1, values0)
+
+				verifyTestVectors(tc, tc.decryptor, values0, ciphertext0, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/Add/op0=ct/op2=ct/scale=mix", tc.params, lvl), func(t *testing.T) {
+
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 3, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 7, tc, tc.encryptorSk, t)
+
+				require.NotEqual(t, ciphertext0.Scale, ciphertext1.Scale)
 
 				tc.evaluator.Add(ciphertext0, ciphertext1, ciphertext0)
 				tc.ringT.Add(values0, values1, values0)
@@ -214,18 +282,12 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		for _, lvl := range tc.testLevel {
 			t.Run(testString("Evaluator/Add/op0=ct/op2=ct/scale=mix", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 3, tc, tc.encryptorSk, t)
+				values1, plaintext, _ := newTestVectorsLvl(lvl, 7, tc, tc.encryptorSk, t)
 
-				tc.ringQ.MulScalar(ciphertext0.Value[0], 7, ciphertext0.Value[0])
-				tc.ringQ.MulScalar(ciphertext0.Value[1], 7, ciphertext0.Value[1])
-				ciphertext0.Scale = (ciphertext0.Scale * 7) % tc.params.T()
+				require.NotEqual(t, ciphertext0.Scale, plaintext.Scale)
 
-				tc.ringQ.MulScalar(ciphertext1.Value[0], 9, ciphertext1.Value[0])
-				tc.ringQ.MulScalar(ciphertext1.Value[1], 9, ciphertext1.Value[1])
-				ciphertext1.Scale = (ciphertext1.Scale * 9) % tc.params.T()
-
-				tc.evaluator.Add(ciphertext0, ciphertext1, ciphertext0)
+				tc.evaluator.Add(ciphertext0, plaintext, ciphertext0)
 				tc.ringT.Add(values0, values1, values0)
 
 				verifyTestVectors(tc, tc.decryptor, values0, ciphertext0, t)
@@ -236,8 +298,8 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		for _, lvl := range tc.testLevel {
 			t.Run(testString("Evaluator/Sub", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
 
 				tc.evaluator.Sub(ciphertext0, ciphertext1, ciphertext0)
 				tc.ringT.Sub(values0, values1, values0)
@@ -250,16 +312,10 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		for _, lvl := range tc.testLevel {
 			t.Run(testString("Evaluator/Sub/op0=ct/op2=ct/scale=mix", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 3, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 7, tc, tc.encryptorSk, t)
 
-				tc.ringQ.MulScalar(ciphertext0.Value[0], 7, ciphertext0.Value[0])
-				tc.ringQ.MulScalar(ciphertext0.Value[1], 7, ciphertext0.Value[1])
-				ciphertext0.Scale = (ciphertext0.Scale * 7) % tc.params.T()
-
-				tc.ringQ.MulScalar(ciphertext1.Value[0], 9, ciphertext1.Value[0])
-				tc.ringQ.MulScalar(ciphertext1.Value[1], 9, ciphertext1.Value[1])
-				ciphertext1.Scale = (ciphertext1.Scale * 9) % tc.params.T()
+				require.NotEqual(t, ciphertext0.Scale, ciphertext1.Scale)
 
 				tc.evaluator.Sub(ciphertext0, ciphertext1, ciphertext0)
 				tc.ringT.Sub(values0, values1, values0)
@@ -270,10 +326,67 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		}
 
 		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/Neg/op0=ct", tc.params, lvl), func(t *testing.T) {
+
+				values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				tc.evaluator.Neg(ciphertext, ciphertext)
+				tc.ringT.Neg(values, values)
+
+				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/NegNew/op0=ct", tc.params, lvl), func(t *testing.T) {
+
+				values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				ciphertext = tc.evaluator.NegNew(ciphertext)
+				tc.ringT.Neg(values, values)
+
+				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/AddScalar/op0=ct", tc.params, lvl), func(t *testing.T) {
+
+				values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				scalar := tc.params.T() >> 1
+
+				tc.evaluator.AddScalar(ciphertext, scalar, ciphertext)
+				tc.ringT.AddScalar(values, scalar, values)
+
+				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
+
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
+			t.Run(testString("Evaluator/AddScalarNew/op0=ct", tc.params, lvl), func(t *testing.T) {
+
+				values, _, ciphertext := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				scalar := tc.params.T() >> 1
+
+				ciphertext = tc.evaluator.AddScalarNew(ciphertext, scalar)
+				tc.ringT.AddScalar(values, scalar, values)
+
+				verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
+			})
+		}
+
+		for _, lvl := range tc.testLevel {
 			t.Run(testString("Evaluator/Mul/op0=ct/op2=ct", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+
+				require.Equal(t, ciphertext0.Scale, ciphertext1.Scale)
 
 				tc.evaluator.Mul(ciphertext0, ciphertext1, ciphertext0)
 				tc.ringT.MulCoeffs(values0, values1, values0)
@@ -286,8 +399,8 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		for _, lvl := range tc.testLevel {
 			t.Run(testString("Evaluator/MulRelin/op0=ct/op2=ct", tc.params, lvl), func(t *testing.T) {
 
-				values0, _, ciphertext0 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
-				values1, _, ciphertext1 := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values0, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
+				values1, _, ciphertext1 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
 
 				tc.evaluator.MulRelin(ciphertext0, ciphertext1, ciphertext0)
 				tc.ringT.MulCoeffs(values0, values1, values0)
@@ -300,15 +413,28 @@ func testEvaluator(tc *testContext, t *testing.T) {
 		for _, lvl := range tc.testLevel {
 			t.Run(testString("Rescale", tc.params, lvl), func(t *testing.T) {
 
-				values, _, ciphertext := newTestVectorsLvl(lvl, tc, tc.encryptorPk, t)
+				values, _, ciphertext0 := newTestVectorsLvl(lvl, 1, tc, tc.encryptorSk, t)
 
-				err := tc.evaluator.Rescale(ciphertext, ciphertext)
+				ciphertext1 := ciphertext0.CopyNew()
+
+				err := tc.evaluator.Rescale(ciphertext0, ciphertext0)
 
 				if tc.params.MaxLevel() == 0 {
 					require.NotNil(t, err)
 				} else {
-					verifyTestVectors(tc, tc.decryptor, values, ciphertext, t)
+					verifyTestVectors(tc, tc.decryptor, values, ciphertext0, t)
 				}
+
+				err = tc.evaluator.(*evaluator).rescaleOriginal(ciphertext1, ciphertext1)
+
+				if tc.params.MaxLevel() == 0 {
+					require.NotNil(t, err)
+				} else {
+					verifyTestVectors(tc, tc.decryptor, values, ciphertext1, t)
+				}
+
+				// Verifies that both rescaling circuit are identical.
+				require.Equal(t, ciphertext0, ciphertext1)
 			})
 		}
 	})
