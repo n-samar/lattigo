@@ -642,7 +642,7 @@ func (eval *evaluator) rescaleOriginal(ctIn, ctOut *Ciphertext) (err error) {
 	return
 }
 
-// Rescale divides ctIn by the last modulus of the moduli chain and returns the result on ctOut.
+// Rescale divides (rounded) ctIn by the last modulus of the moduli chain and returns the result on ctOut.
 // This procesure divides the error by the last modulus of the moduli chain while preserving
 // the LSB-plaintext bits.
 // The procedure will return an error if:
@@ -662,14 +662,36 @@ func (eval *evaluator) Rescale(ctIn, ctOut *Ciphertext) (err error) {
 	ringQ := eval.params.RingQ()
 	ringT := eval.params.RingT()
 
+	// Center by (qL-1)/2
+	qL := ringQ.Modulus[level]
+	qLHalf := (qL - 1) >> 1
+	T := ringT.Modulus[0]
+
+	buff0 := eval.BuffQP[0].Q
+	buff1 := eval.BuffQP[1].Q
+
 	for i := range ctIn.Value {
-		ringQ.MulScalarBigintLvl(level, ctIn.Value[i], eval.tInvModQ[level], eval.BuffQP[0].Q)
-		ringQ.DivFloorByLastModulusNTTLvl(level, eval.BuffQP[0].Q, eval.BuffQP[1].Q, ctOut.Value[i])
-		ringQ.MulScalarLvl(level-1, ctOut.Value[i], eval.params.T(), ctOut.Value[i])
+
+		ringQ.MulScalarBigintLvl(level, ctIn.Value[i], eval.tInvModQ[level], buff0)
+		ringQ.InvNTTSingleLazy(level, buff0.Coeffs[level], buff1.Coeffs[level])
+		ring.AddScalarVec(buff1.Coeffs[level], buff1.Coeffs[level], qLHalf, qL)
+
+		for j := 0; j < level; j++ {
+
+			qi := ringQ.Modulus[j]
+			bredParams := ringQ.BredParams[j]
+			mredParams := ringQ.MredParams[j]
+			rescaleParams := ring.BRed(T, ringQ.RescaleParams[level-1][j], qi, bredParams)
+
+			ring.AddScalarNoModVec(buff1.Coeffs[level], buff1.Coeffs[j], qi-ring.BRedAdd(qLHalf, qi, bredParams))
+			ringQ.NTTSingleLazy(j, buff1.Coeffs[j], buff1.Coeffs[j])
+			ring.SubVecAndMulScalarMontgomeryTwoQiVec(buff1.Coeffs[j], buff0.Coeffs[j], ctOut.Value[i].Coeffs[j], rescaleParams, qi, mredParams)
+		}
+
 		ctOut.Value[i].Coeffs = ctOut.Value[i].Coeffs[:level]
 	}
 
-	ctOut.Scale = ring.MRed(ringT.Modulus[0]-ctOut.Scale, eval.qiInvModTNeg[level], ringT.Modulus[0], ringT.MredParams[0])
+	ctOut.Scale = ring.MRed(T-ctOut.Scale, eval.qiInvModTNeg[level], T, ringT.MredParams[0])
 
 	return
 }
